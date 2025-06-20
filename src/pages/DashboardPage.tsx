@@ -7,7 +7,7 @@ import { useArduinoData } from '../hooks/useArduinoData';
 
 import Sidebar from '../components/Sidebar';
 import SensorReadings from '../components/SensorReadings';
-import EditableOptimalConditions from '../components/EditableOptimalConditions';
+import PlantInfo from '../components/PlantInfo';
 import ControlPanel from '../components/ControlPanel';
 import ReservoirStatus from '../components/ReservoirStatus';
 import ConnectionStatus from '../components/ConnectionStatus';
@@ -51,23 +51,6 @@ const DashboardPage: React.FC = () => {
     await connectToArduino();
     setIsConnecting(false);
   }, [connectToArduino]);
-
-  // Get historical data for PDF report
-  const [historicalData, setHistoricalData] = useState<any[]>([]);
-  
-  useEffect(() => {
-    const fetchHistoricalData = async () => {
-      try {
-        const data = await fetch(`${import.meta.env.VITE_BACKEND_URL || 'https://smart-agri-backend-ysjs.onrender.com'}/historical-data/${activePlant.id}`);
-        const result = await data.json();
-        setHistoricalData(result.data || []);
-      } catch (error) {
-        console.error('Failed to fetch historical data:', error);
-      }
-    };
-    
-    fetchHistoricalData();
-  }, [activePlant.id]);
 
   if (!isAuthenticated) {
     return null; // Don't render anything while redirecting
@@ -142,8 +125,8 @@ const DashboardPage: React.FC = () => {
         {/* Main Content */}
         <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8 transition-all duration-500">
           <div className="grid grid-cols-1 gap-6">
-            {/* Editable Optimal Conditions */}
-            <EditableOptimalConditions plant={activePlant} />
+            {/* Plant Info (non-editable) */}
+            <PlantInfo plant={activePlant} />
             
             {/* Sensor Readings */}
             <SensorReadings 
@@ -166,7 +149,6 @@ const DashboardPage: React.FC = () => {
             <PDFReportGenerator 
               plant={activePlant}
               sensorData={sensorData}
-              historicalData={historicalData}
             />
             
             {/* Historical Data */}
