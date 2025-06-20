@@ -54,12 +54,18 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
   }, []);
 
   const handleAction = async (action: 'water' | 'light' | 'nutrients') => {
+    if (isLoading || !arduinoService.isConnected()) {
+      console.warn('Cannot send command: not connected or loading');
+      return;
+    }
+
     setActionStates(prev => ({
       ...prev,
       [action]: { loading: true, success: false },
     }));
 
     try {
+      console.log(`Sending ${action} command...`);
       const success = await onAction(action);
       
       if (!success) {
@@ -72,6 +78,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
       // Success state will be handled by the WebSocket response
       
     } catch (error) {
+      console.error(`Error sending ${action} command:`, error);
       setActionStates(prev => ({
         ...prev,
         [action]: { loading: false, success: false },
@@ -81,6 +88,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
 
   const isWateringActive = arduinoService.isWateringActive();
   const isLightActive = arduinoService.isLightActive();
+  const isConnected = arduinoService.isConnected();
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
@@ -90,7 +98,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
         {/* Water Button */}
         <button
           onClick={() => handleAction('water')}
-          disabled={actionStates.water.loading || isLoading}
+          disabled={actionStates.water.loading || isLoading || !isConnected}
           className={`
             flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-300 transform hover:scale-105
             ${actionStates.water.success 
@@ -98,7 +106,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
               : isWateringActive
                 ? 'bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-800 shadow-md'
                 : 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50 shadow-md'}
-            ${actionStates.water.loading || isLoading ? 'opacity-50 cursor-not-allowed transform-none' : 'hover:shadow-lg'}
+            ${actionStates.water.loading || isLoading || !isConnected ? 'opacity-50 cursor-not-allowed transform-none' : 'hover:shadow-lg'}
           `}
         >
           <div className="relative">
@@ -131,7 +139,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
         {/* Light Button */}
         <button
           onClick={() => handleAction('light')}
-          disabled={actionStates.light.loading || isLoading}
+          disabled={actionStates.light.loading || isLoading || !isConnected}
           className={`
             flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-300 transform hover:scale-105
             ${actionStates.light.success 
@@ -139,7 +147,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
               : isLightActive
                 ? 'bg-yellow-100 dark:bg-yellow-900 text-yellow-700 dark:text-yellow-300 hover:bg-yellow-200 dark:hover:bg-yellow-800 shadow-md'
                 : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50 shadow-md'}
-            ${actionStates.light.loading || isLoading ? 'opacity-50 cursor-not-allowed transform-none' : 'hover:shadow-lg'}
+            ${actionStates.light.loading || isLoading || !isConnected ? 'opacity-50 cursor-not-allowed transform-none' : 'hover:shadow-lg'}
           `}
         >
           <div className="relative">
@@ -172,13 +180,13 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
         {/* Nutrients Button */}
         <button
           onClick={() => handleAction('nutrients')}
-          disabled={actionStates.nutrients.loading || isLoading}
+          disabled={actionStates.nutrients.loading || isLoading || !isConnected}
           className={`
             flex flex-col items-center justify-center p-4 rounded-lg transition-all duration-300 transform hover:scale-105
             ${actionStates.nutrients.success 
               ? 'bg-green-100 dark:bg-green-900 text-green-700 dark:text-green-300 shadow-lg' 
               : 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-100 dark:hover:bg-green-900/50 shadow-md'}
-            ${actionStates.nutrients.loading || isLoading ? 'opacity-50 cursor-not-allowed transform-none' : 'hover:shadow-lg'}
+            ${actionStates.nutrients.loading || isLoading || !isConnected ? 'opacity-50 cursor-not-allowed transform-none' : 'hover:shadow-lg'}
           `}
         >
           <div className="relative">
@@ -203,16 +211,22 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
       {/* Connection Status Indicator */}
       <div className="mt-4 flex items-center justify-center">
         <div className={`flex items-center space-x-2 px-3 py-1 rounded-full text-xs font-medium ${
-          arduinoService.isConnected() 
+          isConnected 
             ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300'
             : 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
         }`}>
           <div className={`w-2 h-2 rounded-full ${
-            arduinoService.isConnected() ? 'bg-green-500 animate-pulse' : 'bg-red-500'
+            isConnected ? 'bg-green-500 animate-pulse' : 'bg-red-500'
           }`}></div>
-          <span>{arduinoService.isConnected() ? 'Real-time Connected' : 'Disconnected'}</span>
+          <span>{isConnected ? 'Real-time Connected' : 'Disconnected'}</span>
         </div>
       </div>
+      
+      {!isConnected && (
+        <div className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">
+          Controls are disabled when disconnected
+        </div>
+      )}
     </div>
   );
 };
