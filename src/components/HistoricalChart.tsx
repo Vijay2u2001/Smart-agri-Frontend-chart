@@ -242,7 +242,7 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
                 className="fill-current text-gray-500 dark:text-gray-400"
                 style={{
                   fontFamily: "'Inter', sans-serif",
-                  fontSize: "2.5px",
+                  fontSize: "3px",
                   fontWeight: 300,
                   letterSpacing: "0.05em"
                 }}
@@ -252,7 +252,7 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
             </g>
           ))}
           
-          {[0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((x) => (
+          {[0, 25, 50, 75, 100].map((x) => (
             <g key={x}>
               <line 
                 x1={x} 
@@ -260,10 +260,10 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
                 x2={x} 
                 y2="100" 
                 stroke="currentColor" 
-                strokeWidth={x % 30 === 0 ? 0.15 : 0.05} 
+                strokeWidth={x % 25 === 0 ? 0.15 : 0.05} 
                 className="text-gray-300 dark:text-gray-600" 
               />
-              {x % 30 === 0 && (
+              {x % 25 === 0 && data.length > 0 && (
                 <text 
                   x={x} 
                   y="98" 
@@ -271,11 +271,15 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
                   className="fill-current text-gray-500 dark:text-gray-400"
                   style={{
                     fontFamily: "'Inter', sans-serif",
-                    fontSize: "2.5px",
+                    fontSize: "3px",
                     fontWeight: 300
                   }}
                 >
-                  {`-${300 - (x * 3)}m`}
+                  {(() => {
+                    const dataIndex = Math.floor((x / 100) * (data.length - 1));
+                    const timestamp = data[dataIndex]?.timestamp;
+                    return timestamp ? new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                  })()}
                 </text>
               )}
             </g>
@@ -325,16 +329,6 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
             );
           })}
         </svg>
-        
-        <div className="flex justify-between mt-3 text-xs text-gray-500 dark:text-gray-400 font-['Poppins',_'Inter',_'system-ui',_sans-serif]">
-          {data.length > 0 && (
-            <>
-              <div>{new Date(data[0].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-              <div>{new Date(data[Math.floor(data.length / 2)].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-              <div>{new Date(data[data.length - 1].timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-            </>
-          )}
-        </div>
       </div>
     </div>
   );
