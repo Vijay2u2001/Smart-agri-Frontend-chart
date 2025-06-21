@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import arduinoService from '../services/ArduinoService';
-import { SensorData, PlantType, Alert, PlantHealth, ReservoirLevels, ArduinoStatus } from '../types';
+import { SensorData, PlantType, Alert, PlantHealth, ReservoirLevels, ArduinoStatus, Plant } from '../types';
 
-export const useArduinoData = (plantType: PlantType) => {
+export const useArduinoData = (plantType: PlantType, plant: Plant) => {
   const [sensorData, setSensorData] = useState<SensorData | null>(null);
   const [reservoirLevels, setReservoirLevels] = useState<ReservoirLevels>({ 
     water: 0, 
@@ -126,56 +126,68 @@ export const useArduinoData = (plantType: PlantType) => {
     };
   }, [plantType, connectionStatus.lastConnected]);
 
-  // Calculate plant health based on sensor data with improved algorithm
+  // Improved plant health calculation based on optimal conditions
   const calculatePlantHealth = (): PlantHealth => {
-    if (!sensorData) {
+    if (!sensorData || !plant) {
       return { status: 'fair', score: 50 };
     }
 
-    // Health calculation based on multiple factors
     let totalScore = 0;
     let factorCount = 0;
 
-    // Soil moisture (most important for plant health)
-    if (sensorData.moisture >= 60 && sensorData.moisture <= 80) {
-      totalScore += 100;
-    } else {
-      totalScore += Math.max(0, 100 - Math.abs(sensorData.moisture - 70) * 2);
-    }
-    factorCount++;
+    // Helper function to calculate score for a parameter
+    const calculateParameterScore = (value: number, optimal: { min: number; max: number }): number => {
+      if (value >= optimal.min && value <= optimal.max) {
+        return 100; // Perfect score if within optimal range
+      }
+      
+      const optimalMid = (optimal.min + optimal.max) / 2;
+      const optimalRange = optimal.max - optimal.min;
+      const deviation = Math.abs(value - optimalMid);
+      
+      // Calculate score based on how far from optimal range
+      // Give some tolerance outside the range before heavily penalizing
+      const tolerance = optimalRange * 0.2; // 20% tolerance
+      
+      if (deviation <= tolerance) {
+        return Math.max(80, 100 - (deviation / tolerance) * 20);
+      } else {
+        return Math.max(0, 80 - ((deviation - tolerance) / optimalRange) * 60);
+      }
+    };
 
-    // Temperature
-    if (sensorData.temperature >= 15 && sensorData.temperature <= 25) {
-      totalScore += 100;
-    } else {
-      totalScore += Math.max(0, 100 - Math.abs(sensorData.temperature - 20) * 3);
-    }
-    factorCount++;
+    // Soil moisture (weight: 30% - most important)
+    const moistureScore = calculateParameterScore(sensorData.moisture, plant.optimalConditions.moisture);
+    totalScore += moistureScore * 0.3;
+    factorCount += 0.3;
 
-    // Humidity
-    if (sensorData.humidity >= 50 && sensorData.humidity <= 70) {
-      totalScore += 100;
-    } else {
-      totalScore += Math.max(0, 100 - Math.abs(sensorData.humidity - 60) * 2);
-    }
-    factorCount++;
+    // Temperature (weight: 25%)
+    const temperatureScore = calculateParameterScore(sensorData.temperature, plant.optimalConditions.temperature);
+    totalScore += temperatureScore * 0.25;
+    factorCount += 0.25;
 
-    // Nutrient levels (NPK average)
-    const avgNutrients = (sensorData.nitrogen + sensorData.phosphorus + sensorData.potassium) / 3;
-    if (avgNutrients >= 40 && avgNutrients <= 80) {
-      totalScore += 100;
-    } else {
-      totalScore += Math.max(0, 100 - Math.abs(avgNutrients - 60) * 1.5);
-    }
-    factorCount++;
+    // Humidity (weight: 20%)
+    const humidityScore = calculateParameterScore(sensorData.humidity, plant.optimalConditions.humidity);
+    totalScore += humidityScore * 0.2;
+    factorCount += 0.2;
+
+    // Sunlight (weight: 15%)
+    const sunlightScore = calculateParameterScore(sensorData.sunlight, plant.optimalConditions.sunlight);
+    totalScore += sunlightScore * 0.15;
+    factorCount += 0.15;
+
+    // Water level (weight: 10%)
+    const waterScore = calculateParameterScore(sensorData.waterLevel, plant.optimalConditions.waterLevel);
+    totalScore += waterScore * 0.1;
+    factorCount += 0.1;
 
     const overallScore = totalScore / factorCount;
     
     let status: PlantHealth['status'];
     if (overallScore >= 90) status = 'excellent';
     else if (overallScore >= 75) status = 'good';
-    else if (overallScore >= 50) status = 'fair';
-    else if (overallScore >= 25) status = 'poor';
+    else if (overallScore >= 60) status = 'fair';
+    else if (overallScore >= 40) status = 'poor';
     else status = 'critical';
 
     return { status, score: overallScore };
