@@ -37,7 +37,7 @@ const DashboardPage: React.FC = () => {
     sendControlAction,
     connectToArduino,
     markAlertAsRead,
-  } = useArduinoData(activePlant.id);
+  } = useArduinoData(activePlant.id, activePlant);
 
   // Protect route - redirect to login if not authenticated
   useEffect(() => {
@@ -180,6 +180,35 @@ const DashboardPage: React.FC = () => {
             </div>
           </div>
         </main>
+        
+        {/* Footer with Health Score Explanation */}
+        <footer className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 px-4 sm:px-6 lg:px-8 py-4">
+          <div className="max-w-7xl mx-auto">
+            <div className="text-center">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-2">
+                🌱 Plant Health Score Calculation
+              </h3>
+              <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
+                <p>
+                  <strong>Health Score Formula:</strong> Weighted average based on optimal growing conditions
+                </p>
+                <div className="flex flex-wrap justify-center gap-4 mt-2">
+                  <span>• Soil Moisture: 30% weight</span>
+                  <span>• Temperature: 25% weight</span>
+                  <span>• Humidity: 20% weight</span>
+                  <span>• Sunlight: 15% weight</span>
+                  <span>• Water Level: 10% weight</span>
+                </div>
+                <p className="mt-2">
+                  <strong>Scoring:</strong> 100% = Within optimal range, 80%+ = Close to optimal, 60%+ = Acceptable, Below 60% = Needs attention
+                </p>
+                <p className="text-gray-500 dark:text-gray-500">
+                  Smart Agriculture Box © 2025 | Real-time monitoring and intelligent plant care
+                </p>
+              </div>
+            </div>
+          </div>
+        </footer>
       </div>
     </div>
   );
