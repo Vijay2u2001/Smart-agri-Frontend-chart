@@ -125,7 +125,7 @@ const DashboardPage: React.FC = () => {
         {/* Main Content */}
         <main className="flex-1 py-6 px-4 sm:px-6 lg:px-8 transition-all duration-500">
           <div className="grid grid-cols-1 gap-6">
-            {/* Plant Info (non-editable) */}
+            {/* Plant Info */}
             <PlantInfo plant={activePlant} />
             
             {/* Sensor Readings */}
@@ -190,20 +190,19 @@ const DashboardPage: React.FC = () => {
               </h3>
               <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
                 <p>
-                  <strong>Health Score Formula:</strong> Weighted average based on optimal growing conditions
+                  <strong>Updated Health Score Formula:</strong> Weighted average based on optimal growing conditions
                 </p>
                 <div className="flex flex-wrap justify-center gap-4 mt-2">
                   <span>• Soil Moisture: 30% weight</span>
                   <span>• Temperature: 25% weight</span>
+                  <span>• Sunlight: 25% weight (increased)</span>
                   <span>• Humidity: 20% weight</span>
-                  <span>• Sunlight: 15% weight</span>
-                  <span>• Water Level: 10% weight</span>
                 </div>
                 <p className="mt-2">
                   <strong>Scoring:</strong> 100% = Within optimal range, 80%+ = Close to optimal, 60%+ = Acceptable, Below 60% = Needs attention
                 </p>
                 <p className="text-gray-500 dark:text-gray-500">
-                  Smart Agriculture Box © 2025 | Real-time monitoring and intelligent plant care
+                  Smart Agriculture Box © 2025 | Real-time monitoring and intelligent plant care with email alerts
                 </p>
               </div>
             </div>
