@@ -299,7 +299,7 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
                 className="fill-current text-gray-500 dark:text-gray-400"
                 style={{
                   fontFamily: "'Inter', sans-serif",
-                  fontSize: "4px",
+                  fontSize: "3px",
                   fontWeight: 300,
                   letterSpacing: "0.05em"
                 }}
@@ -328,7 +328,7 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
                   className="fill-current text-gray-500 dark:text-gray-400"
                   style={{
                     fontFamily: "'Inter', sans-serif",
-                    fontSize: "4px",
+                    fontSize: "3px",
                     fontWeight: 300
                   }}
                 >
