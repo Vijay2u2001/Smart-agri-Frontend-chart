@@ -191,7 +191,7 @@ class ArduinoService {
     if (!this.socket) return;
 
     // Handle initial data from both ESP32 devices
-    this.socket.on('init', (data) => {
+    this.socket.on('initData', (data) => {
       console.log('Initial sensor data received:', data);
       
       // Process data from both devices
@@ -207,51 +207,126 @@ class ArduinoService {
         this.emitCurrentPlantData();
       }
       
-      // Process device states
-      if (data.deviceStates) {
-        Object.keys(data.deviceStates).forEach(deviceId => {
-          const deviceState = data.deviceStates[deviceId];
-          if (deviceState) {
-            if (deviceId === 'esp32_1') {
-              this.wateringActive = Boolean(deviceState.pump);
-            }
-            const currentDeviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
-            if (deviceId === currentDeviceId) {
-              this.lightActive = Boolean(deviceState.light);
-            }
-          }
-        });
+      // Process reservoir levels
+      if (data.reservoirLevels) {
+        this.currentReservoirLevels = {
+          water: safeNumber(data.reservoirLevels.water, 75),
+          waterCm: safeNumber(data.reservoirLevels.waterCm, 15),
+          fertilizer: safeNumber(data.reservoirLevels.fertilizer, 60),
+          fertilizerCm: safeNumber(data.reservoirLevels.fertilizerCm, 12),
+        };
+        this.emit('reservoir', this.currentReservoirLevels);
+      }
+      
+      // Process control states
+      this.wateringActive = Boolean(data.wateringActive);
+      this.lightActive = Boolean(data.lightActive);
+    });
+
+    // Handle real-time data updates from specific devices
+    this.socket.on('dataUpdate', (data) => {
+      console.log('New sensor data received:', data);
+      
+      if (data.deviceId && data.data) {
+        // Store data from the specific device
+        this.currentSensorData[data.deviceId] = validateSensorData(data.data, data.deviceId, data.plantType);
+        
+        // Update reservoir levels from device data
+        if (data.deviceId === 'esp32_1' && data.data.waterLevelPercent !== undefined) {
+          this.currentReservoirLevels.water = safeNumber(data.data.waterLevelPercent, this.currentReservoirLevels.water);
+          this.currentReservoirLevels.waterCm = Math.round(this.currentReservoirLevels.water * 0.2);
+        }
+        
+        if (data.deviceId === 'esp32_2' && data.data.fertilizer_level !== undefined) {
+          this.currentReservoirLevels.fertilizer = safeNumber(data.data.fertilizer_level, this.currentReservoirLevels.fertilizer);
+          this.currentReservoirLevels.fertilizerCm = Math.round(this.currentReservoirLevels.fertilizer * 0.2);
+        }
+        
+        // Emit updated reservoir levels
+        this.emit('reservoir', this.currentReservoirLevels);
+        
+        // Add to historical data
+        const plantType = data.plantType || (data.deviceId === 'esp32_1' ? 'level1' : 'level2');
+        if (!this.historicalData[plantType]) {
+          this.historicalData[plantType] = [];
+        }
+        this.historicalData[plantType].push(this.currentSensorData[data.deviceId]);
+        
+        // Keep only last 50 records
+        if (this.historicalData[plantType].length > 50) {
+          this.historicalData[plantType] = this.historicalData[plantType].slice(-50);
+        }
+        
+        // Emit combined data for current plant type
+        this.emitCurrentPlantData();
+      }
+      
+      // Update control states from device state
+      if (data.state) {
+        if (data.deviceId === 'esp32_1') {
+          this.wateringActive = Boolean(data.state.waterPump || data.state.pump);
+        }
+        const currentDeviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
+        if (data.deviceId === currentDeviceId) {
+          this.lightActive = Boolean(data.state.light || data.state.ledStatus);
+        }
       }
     });
 
-    // Handle command responses
-    this.socket.on('commandIssued', (command) => {
-      console.log('Command issued:', command);
+    // Handle reservoir level updates
+    this.socket.on('reservoirUpdate', (levels) => {
+      console.log('Reservoir levels updated:', levels);
       
-      // Update local state based on command
-      if (command.command === 'water_pump' || command.command === 'WATER_PUMP') {
-        this.wateringActive = Boolean(command.value);
-      } else if (command.command === 'led' || command.command === 'LED') {
-        this.lightActive = Boolean(command.value);
+      const validatedLevels = {
+        water: safeNumber(levels.water, this.currentReservoirLevels.water),
+        waterCm: safeNumber(levels.waterCm, this.currentReservoirLevels.waterCm),
+        fertilizer: safeNumber(levels.fertilizer, this.currentReservoirLevels.fertilizer),
+        fertilizerCm: safeNumber(levels.fertilizerCm, this.currentReservoirLevels.fertilizerCm),
+      };
+      
+      this.currentReservoirLevels = validatedLevels;
+      this.emit('reservoir', validatedLevels);
+    });
+
+    // Handle control action responses
+    this.socket.on('controlResponse', (response) => {
+      console.log('Control action response:', response);
+      
+      // Update local state based on response
+      if (response.action === 'water') {
+        this.wateringActive = Boolean(response.active);
+      } else if (response.action === 'light') {
+        this.lightActive = Boolean(response.active);
       }
 
-      this.emit('controlSuccess', {
-        action: this.mapCommandToAction(command.command),
-        success: true,
-        message: `${command.command} command executed successfully`,
-        timestamp: new Date().toISOString()
+      if (response.success) {
+        this.emit('controlSuccess', response);
+      } else {
+        this.emit('controlError', response);
+      }
+    });
+
+    // Handle alerts
+    this.socket.on('alert', (alert) => {
+      console.log('Alert received:', alert);
+      this.emit('alert', {
+        id: Date.now().toString(),
+        type: alert.type || 'info',
+        message: alert.message,
+        timestamp: new Date().toISOString(),
+        read: false,
       });
     });
 
-    // Handle command timeouts
-    this.socket.on('commandTimeout', (command) => {
-      console.log('Command timeout:', command);
-      
-      this.emit('controlError', {
-        action: this.mapCommandToAction(command.command),
-        success: false,
-        message: `${command.command} command timed out`,
-        timestamp: new Date().toISOString()
+    // Handle test events
+    this.socket.on('testEvent', (data) => {
+      console.log('Test event received:', data);
+      this.emit('alert', {
+        id: Date.now().toString(),
+        type: 'info',
+        message: `Test event: ${data.message}`,
+        timestamp: new Date().toISOString(),
+        read: false,
       });
     });
 
@@ -273,6 +348,12 @@ class ArduinoService {
       this.reconnectAttempts = 0;
       this.emit('connection', { connected: true });
       
+      // Request fresh data after reconnection
+      this.socket?.emit('requestInitialData', { 
+        plantType: this.plantType,
+        deviceIds: ['esp32_1', 'esp32_2']
+      });
+      
       // Emit reconnection success alert
       this.emit('alert', {
         id: Date.now().toString(),
@@ -287,20 +368,6 @@ class ArduinoService {
       console.warn('WebSocket reconnection error:', error.message || error);
       this.handleConnectionError(error);
     });
-  }
-
-  private mapCommandToAction(command: string): string {
-    const commandMap: Record<string, string> = {
-      'water_pump': 'water',
-      'WATER_PUMP': 'water',
-      'led': 'light',
-      'LED': 'light',
-      'fert_pump': 'nutrients',
-      'FERT_PUMP': 'nutrients',
-      'add_nutrients': 'nutrients',
-      'ADD_NUTRIENTS': 'nutrients'
-    };
-    return commandMap[command] || command;
   }
 
   private emitCurrentPlantData(): void {
@@ -398,8 +465,10 @@ class ArduinoService {
     this.plantType = type;
     
     if (this.socket && this.connected) {
-      // Notify backend about plant type change
-      this.socket.emit('setPlantType', { plantType: type });
+      // Notify backend about plant type change and request data from appropriate device
+      const deviceId = type === 'level1' ? 'esp32_1' : 'esp32_2';
+      this.socket.emit('setPlantType', { plantType: type, deviceId });
+      this.socket.emit('requestInitialData', { plantType: type, deviceId });
     }
     
     // Emit current data for the new plant type
@@ -422,52 +491,36 @@ class ArduinoService {
       const deviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
       
       // Map frontend actions to backend commands
-      const commandMap: Record<ControlAction, string> = {
-        water: 'WATER_PUMP',
-        light: 'LED',
-        nutrients: 'FERT_PUMP'
+      const commandMap: Record<ControlAction, { command: string; value: string }> = {
+        water: { command: 'water_pump', value: this.wateringActive ? 'off' : 'on' },
+        light: { command: 'grow_light', value: this.lightActive ? 'off' : 'on' },
+        nutrients: { command: 'nutrient_pump', value: 'on' }
       };
 
-      const command = commandMap[action];
+      const { command, value } = commandMap[action];
       
-      console.log(`Sending control command to ${deviceId}: ${command}`);
+      console.log(`Sending control command to ${deviceId}: ${command} = ${value}`);
       
-      // Send command via HTTP POST to backend
-      const response = await fetch(`${this.backendUrl}/send-command`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          deviceId,
-          command,
-          value: 1,
-          duration: action === 'nutrients' ? 3000 : 5000
-        })
+      // Send control command via WebSocket
+      this.socket.emit('control', {
+        deviceId,
+        command,
+        value,
+        plantType: this.plantType
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Command sent successfully:', result);
-        
-        // Update local state immediately for better UX
-        if (action === 'water') {
-          this.wateringActive = !this.wateringActive;
-        } else if (action === 'light') {
-          this.lightActive = !this.lightActive;
-        }
-        
-        return true;
-      } else {
-        const error = await response.text();
-        console.error('Command failed:', error);
-        this.emit('controlError', { 
-          action,
-          success: false,
-          message: `Failed to send command: ${error}`
-        });
-        return false;
+      // For nutrients, it's always a one-time action
+      if (action === 'nutrients') {
+        setTimeout(() => {
+          this.emit('controlSuccess', { 
+            action, 
+            success: true, 
+            message: 'Nutrients added successfully' 
+          });
+        }, 1000);
       }
+
+      return true;
     } catch (error) {
       console.error('Command error:', error);
       this.emit('controlError', { 

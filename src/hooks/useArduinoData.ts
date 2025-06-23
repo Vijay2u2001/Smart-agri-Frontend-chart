@@ -17,106 +17,6 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Function to send email alerts
-  const sendEmailAlert = async (alert: Alert, userEmail: string) => {
-    try {
-      // In a real application, you would call your email service API here
-      console.log(`Email alert sent to ${userEmail}:`, alert.message);
-      
-      // For demonstration, we'll just log it
-      // In production, you would integrate with services like:
-      // - SendGrid
-      // - AWS SES
-      // - Nodemailer
-      // - EmailJS (for client-side email)
-      
-    } catch (error) {
-      console.error('Failed to send email alert:', error);
-    }
-  };
-
-  // Function to check sensor values and generate alerts
-  const checkSensorAlerts = (data: SensorData) => {
-    const newAlerts: Alert[] = [];
-    const userEmail = JSON.parse(localStorage.getItem('user') || '{}').email;
-
-    // Check soil moisture
-    if (data.moisture < plant.optimalConditions.moisture.min) {
-      const alert: Alert = {
-        id: `moisture-${Date.now()}`,
-        type: 'warning',
-        message: 'Low soil moisture detected! Starting watering system.',
-        timestamp: new Date().toISOString(),
-        read: false,
-      };
-      newAlerts.push(alert);
-      if (userEmail) sendEmailAlert(alert, userEmail);
-    }
-
-    // Check sunlight levels
-    if (data.sunlight < plant.optimalConditions.sunlight.min) {
-      const alert: Alert = {
-        id: `sunlight-${Date.now()}`,
-        type: 'warning',
-        message: 'Dim lighting detected! Turning on grow lights.',
-        timestamp: new Date().toISOString(),
-        read: false,
-      };
-      newAlerts.push(alert);
-      if (userEmail) sendEmailAlert(alert, userEmail);
-    }
-
-    // Check nutrient levels (average of NPK)
-    const avgNutrients = (data.nitrogen + data.phosphorus + data.potassium) / 3;
-    if (avgNutrients < 30) {
-      const alert: Alert = {
-        id: `nutrients-${Date.now()}`,
-        type: 'warning',
-        message: 'Low nutrient levels detected! Sending nutrients to plants.',
-        timestamp: new Date().toISOString(),
-        read: false,
-      };
-      newAlerts.push(alert);
-      if (userEmail) sendEmailAlert(alert, userEmail);
-    }
-
-    return newAlerts;
-  };
-
-  // Function to check reservoir levels and generate alerts
-  const checkReservoirAlerts = (levels: ReservoirLevels) => {
-    const newAlerts: Alert[] = [];
-    const userEmail = JSON.parse(localStorage.getItem('user') || '{}').email;
-
-    // Check water reservoir
-    if (levels.water < 20) {
-      const alert: Alert = {
-        id: `water-reservoir-${Date.now()}`,
-        type: 'error',
-        message: 'Low water in reservoir! Please refill the water tank immediately.',
-        timestamp: new Date().toISOString(),
-        read: false,
-      };
-      newAlerts.push(alert);
-      if (userEmail) sendEmailAlert(alert, userEmail);
-    }
-
-    // Check fertilizer reservoir
-    if (levels.fertilizer < 20) {
-      const alert: Alert = {
-        id: `fertilizer-reservoir-${Date.now()}`,
-        type: 'error',
-        message: 'Low nutrients in reservoir! Please refill the fertilizer tank immediately.',
-        timestamp: new Date().toISOString(),
-        read: false,
-      };
-      newAlerts.push(alert);
-      if (userEmail) sendEmailAlert(alert, userEmail);
-    }
-
-    return newAlerts;
-  };
-
   useEffect(() => {
     const handleData = (data: SensorData) => {
       // Validate that the data is for the current plant type
@@ -124,23 +24,11 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
       if (!data.deviceId || data.deviceId === expectedDeviceId) {
         setSensorData(data);
         setIsLoading(false);
-        
-        // Check for sensor-based alerts
-        const sensorAlerts = checkSensorAlerts(data);
-        if (sensorAlerts.length > 0) {
-          setAlerts(prev => [...sensorAlerts, ...prev].slice(0, 10));
-        }
       }
     };
 
     const handleReservoirData = (levels: ReservoirLevels) => {
       setReservoirLevels(levels);
-      
-      // Check for reservoir-based alerts
-      const reservoirAlerts = checkReservoirAlerts(levels);
-      if (reservoirAlerts.length > 0) {
-        setAlerts(prev => [...reservoirAlerts, ...prev].slice(0, 10));
-      }
     };
 
     const handleConnection = (status: { connected: boolean }) => {
@@ -238,7 +126,7 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
     };
   }, [plantType, connectionStatus.lastConnected]);
 
-  // Updated plant health calculation - removed water level, increased sunlight to 25%
+  // Improved plant health calculation based on optimal conditions
   const calculatePlantHealth = (): PlantHealth => {
     if (!sensorData || !plant) {
       return { status: 'fair', score: 50 };
@@ -278,17 +166,20 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
     totalScore += temperatureScore * 0.25;
     factorCount += 0.25;
 
-    // Sunlight (weight: 25% - increased from 15%)
-    const sunlightScore = calculateParameterScore(sensorData.sunlight, plant.optimalConditions.sunlight);
-    totalScore += sunlightScore * 0.25;
-    factorCount += 0.25;
-
     // Humidity (weight: 20%)
     const humidityScore = calculateParameterScore(sensorData.humidity, plant.optimalConditions.humidity);
     totalScore += humidityScore * 0.2;
     factorCount += 0.2;
 
-    // Water level removed from calculation
+    // Sunlight (weight: 15%)
+    const sunlightScore = calculateParameterScore(sensorData.sunlight, plant.optimalConditions.sunlight);
+    totalScore += sunlightScore * 0.15;
+    factorCount += 0.15;
+
+    // Water level (weight: 10%)
+    const waterScore = calculateParameterScore(sensorData.waterLevel, plant.optimalConditions.waterLevel);
+    totalScore += waterScore * 0.1;
+    factorCount += 0.1;
 
     const overallScore = totalScore / factorCount;
     

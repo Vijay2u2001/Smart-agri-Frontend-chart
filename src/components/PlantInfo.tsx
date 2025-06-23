@@ -9,7 +9,7 @@ const PlantInfo: React.FC<PlantInfoProps> = ({ plant }) => {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 flex flex-col md:flex-row gap-6">
       <div className="w-full md:w-1/3 flex-shrink-0">
-        <div className="relative rounded-lg overflow-hidden" style={{ height: '240px' }}>
+        <div className="relative rounded-lg overflow-hidden h-48 md:h-full">
           <img
             src={plant.image}
             alt={plant.name}
