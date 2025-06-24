@@ -57,20 +57,14 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
       return;
     }
 
-    const commandMap: Record<'water' | 'light' | 'nutrients', string> = {
-      water: 'water_plant',
-      light: 'light_on',
-      nutrients: 'add_nutrients',
-    };
-
     setActionStates(prev => ({
       ...prev,
       [action]: { loading: true, success: false },
     }));
 
     try {
-      console.log(`Sending ${commandMap[action]} command...`);
-      const success = await onAction(commandMap[action]);
+      console.log(`Sending ${action} command...`);
+      const success = await onAction(action); // Send the action directly
 
       if (!success) {
         setActionStates(prev => ({
@@ -79,7 +73,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
         }));
       }
     } catch (error) {
-      console.error(`Error sending ${commandMap[action]} command:`, error);
+      console.error(`Error sending ${action} command:`, error);
       setActionStates(prev => ({
         ...prev,
         [action]: { loading: false, success: false },
