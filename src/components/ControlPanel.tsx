@@ -3,7 +3,7 @@ import { Droplet, Sun, FlaskRound as Flask } from 'lucide-react';
 import arduinoService from '../services/ArduinoService';
 
 interface ControlPanelProps {
-  onAction: (action: 'water' | 'light' | 'nutrients') => Promise<boolean>;
+  onAction: (command: string) => Promise<boolean>;
   isLoading: boolean;
 }
 
@@ -15,7 +15,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
   });
 
   useEffect(() => {
-    // Listen for control responses
     const handleControlSuccess = (response: any) => {
       const action = response.action;
       if (action && actionStates[action as keyof typeof actionStates]) {
@@ -23,8 +22,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
           ...prev,
           [action]: { loading: false, success: true },
         }));
-        
-        // Reset success state after 2 seconds
+
         setTimeout(() => {
           setActionStates(prev => ({
             ...prev,
@@ -59,26 +57,29 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
       return;
     }
 
+    const commandMap: Record<'water' | 'light' | 'nutrients', string> = {
+      water: 'water_plant',
+      light: 'light_on',
+      nutrients: 'add_nutrients',
+    };
+
     setActionStates(prev => ({
       ...prev,
       [action]: { loading: true, success: false },
     }));
 
     try {
-      console.log(`Sending ${action} command...`);
-      const success = await onAction(action);
-      
+      console.log(`Sending ${commandMap[action]} command...`);
+      const success = await onAction(commandMap[action]);
+
       if (!success) {
-        // If the action failed immediately, reset loading state
         setActionStates(prev => ({
           ...prev,
           [action]: { loading: false, success: false },
         }));
       }
-      // Success state will be handled by the WebSocket response
-      
     } catch (error) {
-      console.error(`Error sending ${action} command:`, error);
+      console.error(`Error sending ${commandMap[action]} command:`, error);
       setActionStates(prev => ({
         ...prev,
         [action]: { loading: false, success: false },
@@ -93,7 +94,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
       <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Controls</h2>
-      
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Water Button */}
         <button
@@ -221,7 +222,7 @@ const ControlPanel: React.FC<ControlPanelProps> = ({ onAction, isLoading }) => {
           <span>{isConnected ? 'Real-time Connected' : 'Disconnected'}</span>
         </div>
       </div>
-      
+
       {!isConnected && (
         <div className="mt-2 text-center text-xs text-gray-500 dark:text-gray-400">
           Controls are disabled when disconnected
