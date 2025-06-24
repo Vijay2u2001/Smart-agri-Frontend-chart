@@ -93,6 +93,16 @@ class ArduinoService {
     level2: []
   };
 
+  // Map frontend actions to backend commands
+  private mapActionToCommand(action: ControlAction): string {
+    const actionMap: Record<ControlAction, string> = {
+      'water': 'water_pump',
+      'light': 'grow_light', 
+      'nutrients': 'add_nutrients'
+    };
+    return actionMap[action] || action;
+  }
+
   public async connect(): Promise<boolean> {
     // Clear any existing connection timeout
     if (this.connectionTimeout) {
@@ -286,8 +296,12 @@ class ArduinoService {
       // Update local state based on command
       if (command.command === 'water_pump') {
         this.wateringActive = Boolean(command.value);
-      } else if (command.command === 'light_on' || command.command === 'light_off') {
-        this.lightActive = command.command === 'light_on';
+      } else if (command.command === 'grow_light') {
+        this.lightActive = Boolean(command.value);
+      } else if (command.command === 'light_on') {
+        this.lightActive = true;
+      } else if (command.command === 'light_off') {
+        this.lightActive = false;
       }
 
       this.emit('controlSuccess', {
@@ -344,16 +358,17 @@ class ArduinoService {
     });
   }
 
-  private mapCommandToAction(command: string): string {
-    const commandMap: Record<string, string> = {
+  private mapCommandToAction(command: string): ControlAction {
+    const commandMap: Record<string, ControlAction> = {
       'water_pump': 'water',
+      'grow_light': 'light',
       'light_on': 'light',
       'light_off': 'light',
       'add_nutrients': 'nutrients',
       'fert_pump': 'nutrients',
       'led': 'light'
     };
-    return commandMap[command] || command;
+    return commandMap[command] || 'water';
   }
 
   private emitCurrentPlantData(): void {
@@ -479,7 +494,10 @@ class ArduinoService {
       // Determine which device to send command to based on current plant type
       const deviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
       
-      console.log(`🎮 Sending control command to ${deviceId}: ${action} for plant type: ${this.plantType}`);
+      // Map frontend action to backend command
+      const backendCommand = this.mapActionToCommand(action);
+      
+      console.log(`🎮 Sending control command to ${deviceId}: ${action} -> ${backendCommand} for plant type: ${this.plantType}`);
       
       // Send command via HTTP POST to backend
       const response = await fetch(`${this.backendUrl}/send-command`, {
@@ -489,7 +507,7 @@ class ArduinoService {
         },
         body: JSON.stringify({
           deviceId,
-          command: action, // Send action directly - backend will handle mapping
+          command: backendCommand, // Use mapped backend command
           value: 1,
           duration: 3000,
           plantType: this.plantType
