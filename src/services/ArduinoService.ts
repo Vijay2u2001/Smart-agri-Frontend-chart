@@ -284,10 +284,10 @@ class ArduinoService {
       console.log('📤 Command issued:', command);
       
       // Update local state based on command
-      if (command.command === 'WATER_PUMP') {
+      if (command.command === 'water_pump') {
         this.wateringActive = Boolean(command.value);
-      } else if (command.command === 'LED') {
-        this.lightActive = Boolean(command.value);
+      } else if (command.command === 'light_on' || command.command === 'light_off') {
+        this.lightActive = command.command === 'light_on';
       }
 
       this.emit('controlSuccess', {
@@ -346,13 +346,9 @@ class ArduinoService {
 
   private mapCommandToAction(command: string): string {
     const commandMap: Record<string, string> = {
-      'WATER_PUMP': 'water',
       'water_pump': 'water',
-      'LED': 'light',
-      'led': 'light',
-      'FERT_PUMP': 'nutrients',
-      'fert_pump': 'nutrients',
-      'ADD_NUTRIENTS': 'nutrients',
+      'light_on': 'light',
+      'light_off': 'light',
       'add_nutrients': 'nutrients'
     };
     return commandMap[command] || command;
@@ -483,9 +479,9 @@ class ArduinoService {
       
       // Map frontend actions to backend commands
       const commandMap: Record<ControlAction, string> = {
-        water: 'WATER_PUMP',
-        light: 'LED',
-        nutrients: 'FERT_PUMP'
+        water: 'water_pump',
+        light: this.lightActive ? 'light_off' : 'light_on',
+        nutrients: 'add_nutrients'
       };
 
       const command = commandMap[action];
@@ -500,9 +496,7 @@ class ArduinoService {
         },
         body: JSON.stringify({
           deviceId,
-          command,
-          value: 1,
-          duration: action === 'nutrients' ? 3000 : 5000
+          command
         })
       });
 
@@ -519,12 +513,12 @@ class ArduinoService {
         
         return true;
       } else {
-        const error = await response.text();
+        const error = await response.json();
         console.error('❌ Command failed:', error);
         this.emit('controlError', { 
           action,
           success: false,
-          message: `Failed to send command: ${error}`
+          message: error.message || `Failed to send command: ${JSON.stringify(error)}`
         });
         return false;
       }
