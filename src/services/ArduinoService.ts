@@ -479,27 +479,7 @@ class ArduinoService {
       // Determine which device to send command to based on current plant type
       const deviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
       
-      // Map frontend actions to backend commands that match your backend COMMAND_TYPES
-      let command = '';
-
-      if (action === 'water') {
-        command = 'water_pump'; // This matches COMMAND_TYPES.WATER_PUMP in your backend
-      } else if (action === 'light') {
-        // Toggle light based on current state
-        command = this.lightActive ? 'light_off' : 'light_on'; // This matches COMMAND_TYPES.LIGHT_ON/LIGHT_OFF
-      } else if (action === 'nutrients') {
-        command = 'fert_pump'; // This matches COMMAND_TYPES.FERT_PUMP in your backend
-      } else {
-        console.error('❌ Invalid action provided:', action);
-        this.emit('controlError', {
-          action,
-          success: false,
-          message: `Invalid control action: ${action}`
-        });
-        return false;
-      }
-      
-      console.log(`🎮 Sending control command to ${deviceId}: ${command}`);
+      console.log(`🎮 Sending control command to ${deviceId}: ${action} for plant type: ${this.plantType}`);
       
       // Send command via HTTP POST to backend
       const response = await fetch(`${this.backendUrl}/send-command`, {
@@ -509,9 +489,10 @@ class ArduinoService {
         },
         body: JSON.stringify({
           deviceId,
-          command,
+          command: action, // Send action directly - backend will handle mapping
           value: 1,
-          duration: 3000
+          duration: 3000,
+          plantType: this.plantType
         })
       });
 
