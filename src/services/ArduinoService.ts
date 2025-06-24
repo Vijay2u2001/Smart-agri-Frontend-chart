@@ -462,7 +462,7 @@ class ArduinoService {
     this.emitCurrentPlantData();
   }
 
-  public async sendCommand(action: ControlAction): Promise<boolean> {
+public async sendCommand(action: ControlAction): Promise<boolean> {
     if (!this.connected || !this.socket) {
       console.error('❌ Not connected to backend');
       this.emit('controlError', { 
@@ -477,14 +477,24 @@ class ArduinoService {
       // Determine which device to send command to based on current plant type
       const deviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
       
-      // Map frontend actions to backend commands
-      const commandMap: Record<ControlAction, string> = {
-        water: 'water_pump',
-        light: this.lightActive ? 'light_off' : 'light_on',
-        nutrients: 'add_nutrients'
-      };
+      // Map frontend actions to backend commands with proper validation
+      let command = '';
 
-      const command = commandMap[action];
+      if (action === 'water') {
+        command = 'water_pump';
+      } else if (action === 'light') {
+        command = this.lightActive ? 'light_off' : 'light_on';
+      } else if (action === 'nutrients') {
+        command = 'add_nutrients';
+      } else {
+        console.error('❌ Invalid action provided:', action);
+        this.emit('controlError', {
+          action,
+          success: false,
+          message: `Invalid control action: ${action}`
+        });
+        return false;
+      }
       
       console.log(`🎮 Sending control command to ${deviceId}: ${command}`);
       
