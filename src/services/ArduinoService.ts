@@ -97,8 +97,8 @@ class ArduinoService {
   private mapActionToCommand(action: ControlAction): string {
     const actionMap: Record<ControlAction, string> = {
       'water': 'water_pump',
-      'light': 'grow_light', 
-      'nutrients': 'add_nutrients'
+      'light': 'led', 
+      'nutrients': 'fert_pump'
     };
     return actionMap[action] || action;
   }
@@ -296,7 +296,7 @@ class ArduinoService {
       // Update local state based on command
       if (command.command === 'water_pump') {
         this.wateringActive = Boolean(command.value);
-      } else if (command.command === 'grow_light') {
+      } else if (command.command === 'led') {
         this.lightActive = Boolean(command.value);
       } else if (command.command === 'light_on') {
         this.lightActive = true;
@@ -361,12 +361,12 @@ class ArduinoService {
   private mapCommandToAction(command: string): ControlAction {
     const commandMap: Record<string, ControlAction> = {
       'water_pump': 'water',
-      'grow_light': 'light',
+      'led': 'light',
       'light_on': 'light',
       'light_off': 'light',
       'add_nutrients': 'nutrients',
       'fert_pump': 'nutrients',
-      'led': 'light'
+      'grow_light': 'light'
     };
     return commandMap[command] || 'water';
   }
