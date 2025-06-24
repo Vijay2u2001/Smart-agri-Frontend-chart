@@ -21,7 +21,7 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
   const sendEmailAlert = async (alert: Alert, userEmail: string) => {
     try {
       // In a real application, you would call your email service API here
-      console.log(`Email alert sent to ${userEmail}:`, alert.message);
+      console.log(`📧 Email alert sent to ${userEmail}:`, alert.message);
       
       // For demonstration, we'll just log it
       // In production, you would integrate with services like:
@@ -45,7 +45,7 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
       const alert: Alert = {
         id: `moisture-${Date.now()}`,
         type: 'warning',
-        message: 'Low soil moisture detected! Starting watering system.',
+        message: 'Low water detected! Starting watering system.',
         timestamp: new Date().toISOString(),
         read: false,
       };
@@ -118,22 +118,22 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
   };
 
   useEffect(() => {
+    console.log(`🔄 Setting up Arduino data hook for plant type: ${plantType}`);
+    
     const handleData = (data: SensorData) => {
-      // Validate that the data is for the current plant type
-      const expectedDeviceId = plantType === 'level1' ? 'esp32_1' : 'esp32_2';
-      if (!data.deviceId || data.deviceId === expectedDeviceId) {
-        setSensorData(data);
-        setIsLoading(false);
-        
-        // Check for sensor-based alerts
-        const sensorAlerts = checkSensorAlerts(data);
-        if (sensorAlerts.length > 0) {
-          setAlerts(prev => [...sensorAlerts, ...prev].slice(0, 10));
-        }
+      console.log(`📊 Received sensor data:`, data);
+      setSensorData(data);
+      setIsLoading(false);
+      
+      // Check for sensor-based alerts
+      const sensorAlerts = checkSensorAlerts(data);
+      if (sensorAlerts.length > 0) {
+        setAlerts(prev => [...sensorAlerts, ...prev].slice(0, 10));
       }
     };
 
     const handleReservoirData = (levels: ReservoirLevels) => {
+      console.log(`🚰 Received reservoir data:`, levels);
       setReservoirLevels(levels);
       
       // Check for reservoir-based alerts
@@ -144,6 +144,7 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
     };
 
     const handleConnection = (status: { connected: boolean }) => {
+      console.log(`🔌 Connection status changed:`, status);
       setConnectionStatus({
         connected: status.connected,
         lastConnected: status.connected ? new Date().toISOString() : connectionStatus.lastConnected,
@@ -155,11 +156,12 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
     };
 
     const handleAlert = (alert: Alert) => {
+      console.log(`🚨 Received alert:`, alert);
       setAlerts(prev => [alert, ...prev].slice(0, 10));
     };
 
     const handleError = (error: { message: string; details?: string }) => {
-      console.error('Arduino service error:', error);
+      console.error('❌ Arduino service error:', error);
       
       const errorAlert: Alert = {
         id: Date.now().toString(),
@@ -173,6 +175,7 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
     };
 
     const handleControlSuccess = (response: any) => {
+      console.log(`✅ Control success:`, response);
       const successAlert: Alert = {
         id: Date.now().toString(),
         type: 'success',
@@ -185,6 +188,7 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
     };
 
     const handleControlError = (response: any) => {
+      console.log(`❌ Control error:`, response);
       const errorAlert: Alert = {
         id: Date.now().toString(),
         type: 'error',
@@ -210,12 +214,14 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
 
     // Try to connect if not already connected
     if (!arduinoService.isConnected()) {
+      console.log('🔌 Attempting to connect to Arduino service...');
       arduinoService.connect().then((connected) => {
         if (!connected) {
           setIsLoading(false);
         }
       });
     } else {
+      console.log('✅ Already connected to Arduino service');
       setConnectionStatus({
         connected: true,
         lastConnected: new Date().toISOString(),
@@ -304,11 +310,13 @@ export const useArduinoData = (plantType: PlantType, plant: Plant) => {
 
   // Function to send control actions
   const sendControlAction = async (action: 'water' | 'light' | 'nutrients') => {
+    console.log(`🎮 Sending control action: ${action}`);
     return await arduinoService.sendCommand(action);
   };
 
   // Function to connect/reconnect to Arduino
   const connectToArduino = async () => {
+    console.log('🔌 Manual connection attempt...');
     return await arduinoService.connect();
   };
 

@@ -119,14 +119,20 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
   const smoothPath = generateSmoothPath();
 
   useEffect(() => {
+    console.log(`📈 Setting up historical chart for ${dataType}`);
+    
     // Check connection status
     const checkConnection = () => {
-      setIsConnected(arduinoService.isConnected());
+      const connected = arduinoService.isConnected();
+      console.log(`📈 Chart connection status: ${connected}`);
+      setIsConnected(connected);
     };
 
     const fetchHistoricalData = async () => {
       try {
+        console.log(`📈 Fetching historical data for ${dataType}...`);
         const historicalData = await arduinoService.getHistoricalData();
+        console.log(`📈 Received ${historicalData.length} historical data points`);
         
         const processedData = historicalData.map(item => {
           let value = 0;
@@ -150,9 +156,10 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
         });
         
         const averagedData = averageDataPoints(processedData);
+        console.log(`📈 Processed ${averagedData.length} averaged data points for ${dataType}`);
         setData(averagedData);
       } catch (error) {
-        console.error('Failed to fetch historical data:', error);
+        console.error(`📈 Failed to fetch historical data for ${dataType}:`, error);
       }
     };
 
@@ -161,6 +168,7 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
 
     // Handle connection status changes
     const handleConnection = (status: { connected: boolean }) => {
+      console.log(`📈 Chart received connection update: ${status.connected}`);
       setIsConnected(status.connected);
       if (status.connected) {
         fetchHistoricalData();
@@ -170,6 +178,8 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
     let updateTimeout: NodeJS.Timeout;
     const handleDataUpdate = (newData: SensorData) => {
       if (!isConnected) return;
+      
+      console.log(`📈 Chart received new data for ${dataType}:`, newData);
       
       if (updateTimeout) {
         clearTimeout(updateTimeout);
@@ -197,9 +207,11 @@ const HistoricalChart: React.FC<HistoricalChartProps> = ({
           };
           
           const updatedRawData = [...prevData.map(p => ({ timestamp: p.timestamp, value: p.value })), newPoint];
-          return averageDataPoints(updatedRawData);
+          const newAveragedData = averageDataPoints(updatedRawData);
+          console.log(`📈 Updated chart data for ${dataType}, now ${newAveragedData.length} points`);
+          return newAveragedData;
         });
-      }, 5000); // Update every 5 seconds
+      }, 2000); // Update every 2 seconds to avoid too frequent updates
     };
 
     // Subscribe to events

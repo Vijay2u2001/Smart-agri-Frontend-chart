@@ -10,7 +10,7 @@ const safeNumber = (value: any, defaultValue: number = 0): number => {
   return isNaN(num) ? defaultValue : num;
 };
 
-// Utility function to validate and process sensor data from ESP32 devices
+// Utility function to validate and process sensor data
 const validateSensorData = (data: any, deviceId: string = '', plantType: PlantType = 'level1'): SensorData => {
   const now = new Date().toISOString();
   
@@ -140,7 +140,7 @@ class ArduinoService {
         }, 20000);
 
         this.socket.on('connect', () => {
-          console.log('Successfully connected to backend via WebSocket');
+          console.log('✅ Successfully connected to backend via WebSocket');
           this.connected = true;
           this.reconnectAttempts = 0;
           
@@ -190,11 +190,11 @@ class ArduinoService {
   private setupSocketListeners(): void {
     if (!this.socket) return;
 
-    // Handle initial data from both ESP32 devices
-    this.socket.on('init', (data) => {
-      console.log('Initial sensor data received:', data);
+    // Handle initial data from backend
+    this.socket.on('initData', (data) => {
+      console.log('📡 Initial data received from backend:', data);
       
-      // Process data from both devices
+      // Process sensor data from both devices
       if (data.sensorData) {
         Object.keys(data.sensorData).forEach(deviceId => {
           const deviceData = data.sensorData[deviceId];
@@ -207,13 +207,19 @@ class ArduinoService {
         this.emitCurrentPlantData();
       }
       
+      // Process reservoir levels
+      if (data.reservoirLevels) {
+        this.currentReservoirLevels = data.reservoirLevels;
+        this.emit('reservoir', this.currentReservoirLevels);
+      }
+      
       // Process device states
       if (data.deviceStates) {
         Object.keys(data.deviceStates).forEach(deviceId => {
           const deviceState = data.deviceStates[deviceId];
           if (deviceState) {
             if (deviceId === 'esp32_1') {
-              this.wateringActive = Boolean(deviceState.pump);
+              this.wateringActive = Boolean(deviceState.waterPump);
             }
             const currentDeviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
             if (deviceId === currentDeviceId) {
@@ -224,14 +230,63 @@ class ArduinoService {
       }
     });
 
+    // Handle real-time data updates
+    this.socket.on('dataUpdate', (update) => {
+      console.log('📊 Data update received:', update);
+      
+      if (update.deviceId && update.data) {
+        this.currentSensorData[update.deviceId] = validateSensorData(update.data, update.deviceId, this.plantType);
+        
+        // Store in historical data
+        const plantType = update.plantType || (update.deviceId === 'esp32_1' ? 'level1' : 'level2');
+        if (!this.historicalData[plantType]) {
+          this.historicalData[plantType] = [];
+        }
+        this.historicalData[plantType].push(this.currentSensorData[update.deviceId]);
+        
+        // Keep only last 100 records
+        if (this.historicalData[plantType].length > 100) {
+          this.historicalData[plantType] = this.historicalData[plantType].slice(-100);
+        }
+        
+        // Emit data for current plant type
+        this.emitCurrentPlantData();
+      }
+    });
+
+    // Handle reservoir updates
+    this.socket.on('reservoirUpdate', (levels) => {
+      console.log('🚰 Reservoir update received:', levels);
+      this.currentReservoirLevels = levels;
+      this.emit('reservoir', levels);
+    });
+
+    // Handle control responses
+    this.socket.on('controlResponse', (response) => {
+      console.log('🎮 Control response received:', response);
+      
+      // Update local state based on response
+      if (response.action === 'water') {
+        this.wateringActive = response.active || false;
+      } else if (response.action === 'light') {
+        this.lightActive = response.active || false;
+      }
+
+      if (response.success) {
+        this.emit('controlSuccess', response);
+      } else {
+        this.emit('controlError', response);
+      }
+    });
+
     // Handle command responses
     this.socket.on('commandIssued', (command) => {
-      console.log('Command issued:', command);
+      console.log('📤 Command issued:', command);
       
       // Update local state based on command
-      if (command.command === 'water_pump' || command.command === 'WATER_PUMP') {
+      if (command.command === 'WATER_PUMP') {
         this.wateringActive = Boolean(command.value);
-      } else if (command.command === 'led' || command.command === 'LED') {
+      } else if (command.command === 'LED') {
         this.lightActive = Boolean(command.value);
       }
 
@@ -245,7 +300,7 @@ class ArduinoService {
 
     // Handle command timeouts
     this.socket.on('commandTimeout', (command) => {
-      console.log('Command timeout:', command);
+      console.log('⏰ Command timeout:', command);
       
       this.emit('controlError', {
         action: this.mapCommandToAction(command.command),
@@ -257,7 +312,7 @@ class ArduinoService {
 
     // Handle disconnection
     this.socket.on('disconnect', (reason) => {
-      console.log('WebSocket disconnected:', reason);
+      console.log('❌ WebSocket disconnected:', reason);
       this.connected = false;
       this.emit('connection', { connected: false });
       
@@ -268,7 +323,7 @@ class ArduinoService {
 
     // Handle reconnection
     this.socket.on('reconnect', (attemptNumber) => {
-      console.log('WebSocket reconnected after', attemptNumber, 'attempts');
+      console.log('🔄 WebSocket reconnected after', attemptNumber, 'attempts');
       this.connected = true;
       this.reconnectAttempts = 0;
       this.emit('connection', { connected: true });
@@ -284,21 +339,21 @@ class ArduinoService {
     });
 
     this.socket.on('reconnect_error', (error) => {
-      console.warn('WebSocket reconnection error:', error.message || error);
+      console.warn('🔄❌ WebSocket reconnection error:', error.message || error);
       this.handleConnectionError(error);
     });
   }
 
   private mapCommandToAction(command: string): string {
     const commandMap: Record<string, string> = {
-      'water_pump': 'water',
       'WATER_PUMP': 'water',
-      'led': 'light',
+      'water_pump': 'water',
       'LED': 'light',
-      'fert_pump': 'nutrients',
+      'led': 'light',
       'FERT_PUMP': 'nutrients',
-      'add_nutrients': 'nutrients',
-      'ADD_NUTRIENTS': 'nutrients'
+      'fert_pump': 'nutrients',
+      'ADD_NUTRIENTS': 'nutrients',
+      'add_nutrients': 'nutrients'
     };
     return commandMap[command] || command;
   }
@@ -308,7 +363,10 @@ class ArduinoService {
     const esp32_1_data = this.currentSensorData['esp32_1'];
     const esp32_2_data = this.currentSensorData['esp32_2'];
     
-    if (!esp32_1_data && !esp32_2_data) return;
+    if (!esp32_1_data && !esp32_2_data) {
+      console.log('⚠️ No sensor data available from either device');
+      return;
+    }
     
     let combinedData: SensorData;
     
@@ -318,7 +376,7 @@ class ArduinoService {
       combinedData = {
         temperature: esp32_1_data?.temperature || 20,
         humidity: esp32_1_data?.humidity || 50,
-        moisture: esp32_1_data?.moisture || 0, // Now using percentage
+        moisture: esp32_1_data?.moisture || 0,
         sunlight: esp32_1_data?.sunlight || 0,
         nitrogen: esp32_1_data?.nitrogen || 0,
         phosphorus: esp32_1_data?.phosphorus || 0,
@@ -334,7 +392,7 @@ class ArduinoService {
       combinedData = {
         temperature: esp32_1_data?.temperature || 20,
         humidity: esp32_1_data?.humidity || 50,
-        moisture: esp32_2_data?.moisture || 0, // Now using percentage
+        moisture: esp32_2_data?.moisture || 0,
         sunlight: esp32_2_data?.sunlight || 0,
         nitrogen: esp32_2_data?.nitrogen || 0,
         phosphorus: esp32_2_data?.phosphorus || 0,
@@ -346,6 +404,7 @@ class ArduinoService {
       };
     }
     
+    console.log(`📊 Emitting combined data for ${this.plantType}:`, combinedData);
     this.emit('data', combinedData);
   }
 
@@ -359,13 +418,13 @@ class ArduinoService {
     
     if (this.reconnectAttempts < this.maxReconnectAttempts) {
       const backoffDelay = Math.min(this.retryDelay * Math.pow(1.5, this.reconnectAttempts - 1), 20000);
-      console.log(`Connection failed. Retrying in ${backoffDelay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
+      console.log(`🔄 Connection failed. Retrying in ${backoffDelay}ms... (${this.reconnectAttempts}/${this.maxReconnectAttempts})`);
       
       setTimeout(() => {
         this.connect();
       }, backoffDelay);
     } else {
-      console.error('Max reconnection attempts reached');
+      console.error('❌ Max reconnection attempts reached');
       this.emit('error', { 
         message: `Failed to connect to backend after ${this.maxReconnectAttempts} attempts: ${errorMessage}`,
         details: `Backend URL: ${this.backendUrl}. Please check if the server is running and accessible.`
@@ -395,6 +454,7 @@ class ArduinoService {
   }
 
   public setActivePlant(type: PlantType): void {
+    console.log(`🌱 Setting active plant to: ${type}`);
     this.plantType = type;
     
     if (this.socket && this.connected) {
@@ -408,7 +468,7 @@ class ArduinoService {
 
   public async sendCommand(action: ControlAction): Promise<boolean> {
     if (!this.connected || !this.socket) {
-      console.error('Not connected to backend');
+      console.error('❌ Not connected to backend');
       this.emit('controlError', { 
         action, 
         success: false, 
@@ -430,7 +490,7 @@ class ArduinoService {
 
       const command = commandMap[action];
       
-      console.log(`Sending control command to ${deviceId}: ${command}`);
+      console.log(`🎮 Sending control command to ${deviceId}: ${command}`);
       
       // Send command via HTTP POST to backend
       const response = await fetch(`${this.backendUrl}/send-command`, {
@@ -448,7 +508,7 @@ class ArduinoService {
 
       if (response.ok) {
         const result = await response.json();
-        console.log('Command sent successfully:', result);
+        console.log('✅ Command sent successfully:', result);
         
         // Update local state immediately for better UX
         if (action === 'water') {
@@ -460,7 +520,7 @@ class ArduinoService {
         return true;
       } else {
         const error = await response.text();
-        console.error('Command failed:', error);
+        console.error('❌ Command failed:', error);
         this.emit('controlError', { 
           action,
           success: false,
@@ -469,7 +529,7 @@ class ArduinoService {
         return false;
       }
     } catch (error) {
-      console.error('Command error:', error);
+      console.error('❌ Command error:', error);
       this.emit('controlError', { 
         action,
         success: false,
