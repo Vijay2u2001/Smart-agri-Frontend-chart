@@ -10,11 +10,16 @@ const server = http.createServer(app);
 // Enhanced Socket.IO configuration
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || '*',
+    origin: [
+      'https://smart-agriculture-box.netlify.app',
+      'http://localhost:3000',
+      'http://localhost:5173', // Add Vite dev server
+    ],
     methods: ['GET', 'POST'],
+    credentials: true,
   },
   connectionStateRecovery: {
-    maxDisconnectionDuration: 2 * 60 * 1000, // 2 minutes
+    maxDisconnectionDuration: 2 * 60 * 1000,
     skipMiddlewares: true,
   },
   pingInterval: 10000,
@@ -24,18 +29,20 @@ const io = new Server(server, {
 
 // Enhanced CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || '*',
+  origin: [
+    'https://smart-agriculture-box.netlify.app',
+    'http://localhost:3000',
+    'http://localhost:5173', // Add Vite dev server
+  ],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  credentials: true
+  credentials: true,
 };
 app.use(cors(corsOptions));
-
 app.use(bodyParser.json({ limit: '10mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
-
-// Add pre-flight OPTIONS handler
 app.options('*', cors(corsOptions));
+app.enable('trust proxy');
 
 // Constants
 const COMMAND_TYPES = {
@@ -57,7 +64,7 @@ const COMMAND_STATUS = {
   TIMEOUT: 'timeout'
 };
 
-// In-memory databases with persistence
+// In-memory databases
 let sensorData = {};
 let historicalData = {};
 let pendingCommands = {};
@@ -139,7 +146,8 @@ app.get('/', (req, res) => {
   res.json({
     status: 'running',
     message: '🌱 Smart Agriculture Backend',
-    version: '2.3.0',
+    version: '2.4.0',
+    frontend: 'https://smart-agriculture-box.netlify.app',
     endpoints: {
       update: 'POST /update',
       data: 'GET /data',
@@ -147,8 +155,7 @@ app.get('/', (req, res) => {
       historicalData: 'GET /historical-data/:plantType',
       sendCommand: 'POST /send-command',
       getCommands: 'GET /get-commands/:deviceId',
-      commandStatus: 'GET /command-status/:deviceId',
-      deviceState: 'GET /device-state/:deviceId',
+      deviceStatus: 'GET /device-status/:deviceId',
       health: 'GET /health',
       testEmit: 'GET /test-emit'
     },
@@ -157,7 +164,7 @@ app.get('/', (req, res) => {
   });
 });
 
-// Health check endpoint with more detailed information
+// Health check endpoint
 app.get('/health', (req, res) => {
   const uptime = process.uptime();
   const memoryUsage = process.memoryUsage();
@@ -242,64 +249,6 @@ app.get('/historical-data/:plantType', (req, res) => {
     res.status(500).json({ 
       error: 'Internal server error',
       message: error.message
-    });
-  }
-});
-
-// Command Management Endpoints
-app.get('/get-commands/:deviceId', (req, res) => {
-  try {
-    const { deviceId } = req.params;
-    
-    if (!deviceId) {
-      return res.status(400).json({ 
-        error: 'Device ID is required',
-        received: req.params
-      });
-    }
-
-    // Update device connection status
-    deviceStates[deviceId] = deviceStates[deviceId] || {};
-    deviceStates[deviceId].connectionStatus = 'connected';
-    deviceStates[deviceId].lastSeen = new Date().toISOString();
-
-    const commands = pendingCommands[deviceId] || [];
-    const pending = commands.filter(c => c.status === COMMAND_STATUS.PENDING);
-    
-    // Mark commands as completed as we're sending them
-    pending.forEach(c => {
-      c.status = COMMAND_STATUS.COMPLETED;
-      c.completedAt = new Date().toISOString();
-    });
-
-    // Format commands for ESP32
-    const formattedCommands = pending.map(c => ({
-      command: c.command,
-      value: [COMMAND_TYPES.LIGHT_ON, COMMAND_TYPES.WATER_PUMP, 
-              COMMAND_TYPES.FERT_PUMP, COMMAND_TYPES.LED, 
-              COMMAND_TYPES.GROW_LIGHT, COMMAND_TYPES.NUTRIENT_PUMP].includes(c.command) ? 1 : 0,
-      duration: c.duration || 3000
-    }));
-
-    console.log(`Sending ${formattedCommands.length} commands to ${deviceId}`);
-    
-    res.json(formattedCommands);
-    
-    // Notify via WebSocket
-    if (pending.length > 0) {
-      io.emit('commandsProcessed', { 
-        deviceId, 
-        commands: pending,
-        timestamp: new Date().toISOString() 
-      });
-      console.log(`Emitted commandsProcessed for ${deviceId}`);
-    }
-  } catch (error) {
-    console.error('Error in /get-commands:', error);
-    res.status(500).json({ 
-      error: 'Internal server error',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
@@ -452,9 +401,9 @@ app.post('/send-command', (req, res) => {
 
     // Map frontend commands to backend commands
     const commandMapping = {
-      'water': 'water_pump',
-      'light': 'grow_light',
-      'nutrients': 'nutrient_pump'
+      'water': 'WATER_PUMP',
+      'light': 'LED',
+      'nutrients': 'FERT_PUMP'
     };
     
     const backendCommand = commandMapping[command] || command;
@@ -512,6 +461,13 @@ app.post('/send-command', (req, res) => {
               command === 'water' ? deviceStates[deviceId].waterPump : false,
       message: `${command} command executed successfully`,
       timestamp: new Date().toISOString()
+    });
+    
+    // Send command to ESP32 device
+    io.to(`device_${deviceId}`).emit('executeCommand', {
+      command: backendCommand,
+      value: commandObj.value,
+      duration: commandObj.duration
     });
     
     // Set timeout for command (5 minutes)
@@ -596,6 +552,23 @@ io.on('connection', (socket) => {
   
   socket.emit('initData', initData);
   console.log(`[${socket.id}] Sent initial data`);
+
+  // Handle ESP32 device connections
+  socket.on('deviceConnect', (deviceId) => {
+    if (devicePlantMap[deviceId]) {
+      socket.join(`device_${deviceId}`);
+      deviceStates[deviceId].connectionStatus = 'connected';
+      deviceStates[deviceId].lastSeen = new Date().toISOString();
+      console.log(`Device ${deviceId} connected and joined room device_${deviceId}`);
+      
+      // Notify all clients about device connection
+      io.emit('deviceStatusUpdate', {
+        deviceId,
+        status: 'connected',
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
 
   // Handle requests for initial data
   socket.on('requestInitialData', (data) => {
@@ -813,7 +786,6 @@ server.listen(PORT, () => {
   console.log(`- http://localhost:${PORT}/health`);
   console.log(`- http://localhost:${PORT}/update`);
   console.log(`- http://localhost:${PORT}/send-command`);
-  console.log(`- http://localhost:${PORT}/get-commands/:deviceId`);
   console.log(`- http://localhost:${PORT}/sensor-data/:plantType`);
   console.log(`- http://localhost:${PORT}/test-emit`);
   console.log(`⚡ WebSocket endpoint: ws://localhost:${PORT}`);
