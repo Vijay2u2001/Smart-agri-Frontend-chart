@@ -349,7 +349,9 @@ class ArduinoService {
       'water_pump': 'water',
       'light_on': 'light',
       'light_off': 'light',
-      'add_nutrients': 'nutrients'
+      'add_nutrients': 'nutrients',
+      'fert_pump': 'nutrients',
+      'led': 'light'
     };
     return commandMap[command] || command;
   }
@@ -462,7 +464,7 @@ class ArduinoService {
     this.emitCurrentPlantData();
   }
 
-public async sendCommand(action: ControlAction): Promise<boolean> {
+  public async sendCommand(action: ControlAction): Promise<boolean> {
     if (!this.connected || !this.socket) {
       console.error('❌ Not connected to backend');
       this.emit('controlError', { 
@@ -477,15 +479,16 @@ public async sendCommand(action: ControlAction): Promise<boolean> {
       // Determine which device to send command to based on current plant type
       const deviceId = this.plantType === 'level1' ? 'esp32_1' : 'esp32_2';
       
-      // Map frontend actions to backend commands with proper validation
+      // Map frontend actions to backend commands that match your backend COMMAND_TYPES
       let command = '';
 
       if (action === 'water') {
-        command = 'water_pump';
+        command = 'water_pump'; // This matches COMMAND_TYPES.WATER_PUMP in your backend
       } else if (action === 'light') {
-        command = this.lightActive ? 'light_off' : 'light_on';
+        // Toggle light based on current state
+        command = this.lightActive ? 'light_off' : 'light_on'; // This matches COMMAND_TYPES.LIGHT_ON/LIGHT_OFF
       } else if (action === 'nutrients') {
-        command = 'add_nutrients';
+        command = 'fert_pump'; // This matches COMMAND_TYPES.FERT_PUMP in your backend
       } else {
         console.error('❌ Invalid action provided:', action);
         this.emit('controlError', {
@@ -506,7 +509,9 @@ public async sendCommand(action: ControlAction): Promise<boolean> {
         },
         body: JSON.stringify({
           deviceId,
-          command
+          command,
+          value: 1,
+          duration: 3000
         })
       });
 
