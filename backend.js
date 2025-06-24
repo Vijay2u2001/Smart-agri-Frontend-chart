@@ -401,23 +401,25 @@ app.post('/send-command', (req, res) => {
 
     // Map frontend commands to backend commands
     const commandMapping = {
-      'water': 'WATER_PUMP',
-      'light': 'LED',
-      'nutrients': 'FERT_PUMP'
+      'water': 'water_pump',
+      'light': 'led',
+      'nutrients': 'fert_pump'
     };
     
     const backendCommand = commandMapping[command] || command;
 
-    // Validate command type
-    if (!Object.values(COMMAND_TYPES).includes(backendCommand)) {
+    // Validate command type - check against both mapped and direct commands
+    const validCommands = [...Object.values(COMMAND_TYPES), ...Object.keys(commandMapping)];
+    if (!validCommands.includes(command) && !Object.values(COMMAND_TYPES).includes(backendCommand)) {
       return res.status(400).json({
         error: 'Invalid command type',
         validCommands: Object.keys(commandMapping),
-        backendCommands: Object.values(COMMAND_TYPES)
+        backendCommands: Object.values(COMMAND_TYPES),
+        received: command
       });
     }
 
-    // Create command object
+    // Create command object WITHOUT circular references
     const commandObj = {
       id: Date.now().toString(),
       command: backendCommand,
@@ -429,6 +431,7 @@ app.post('/send-command', (req, res) => {
       timestamp: new Date().toISOString(),
       status: COMMAND_STATUS.PENDING,
       issuedBy: req.ip
+      // DO NOT include timeoutRef here to avoid circular JSON
     };
 
     // Initialize command queue if not exists
@@ -438,13 +441,13 @@ app.post('/send-command', (req, res) => {
     pendingCommands[deviceId].push(commandObj);
 
     // Update device state (predictive)
-    if (command === 'light') {
-      deviceStates[deviceId].light = !deviceStates[deviceId].light;
-    } else if (command === 'water') {
+    if (command === 'water') {
       deviceStates[deviceId].waterPump = !deviceStates[deviceId].waterPump;
       if (deviceStates[deviceId].waterPump) {
         deviceStates[deviceId].lastWatered = new Date().toISOString();
       }
+    } else if (command === 'light') {
+      deviceStates[deviceId].light = !deviceStates[deviceId].light;
     } else if (command === 'nutrients') {
       deviceStates[deviceId].lastNutrients = new Date().toISOString();
     }
@@ -470,7 +473,7 @@ app.post('/send-command', (req, res) => {
       duration: commandObj.duration
     });
     
-    // Set timeout for command (5 minutes)
+    // Set timeout for command (5 minutes) - store timeout separately
     const timeout = setTimeout(() => {
       const cmdIndex = pendingCommands[deviceId].findIndex(c => c.id === commandObj.id);
       if (cmdIndex !== -1 && pendingCommands[deviceId][cmdIndex].status === COMMAND_STATUS.PENDING) {
@@ -489,13 +492,24 @@ app.post('/send-command', (req, res) => {
       }
     }, 5 * 60 * 1000); // 5 minutes
     
-    // Store timeout reference for cleanup
-    commandObj.timeoutRef = timeout;
+    // Store timeout reference separately to avoid circular JSON
+    if (!global.commandTimeouts) {
+      global.commandTimeouts = new Map();
+    }
+    global.commandTimeouts.set(commandObj.id, timeout);
     
     res.json({
       status: 'success',
       message: 'Command received and queued',
-      command: commandObj
+      command: {
+        id: commandObj.id,
+        command: commandObj.command,
+        originalCommand: commandObj.originalCommand,
+        deviceId: commandObj.deviceId,
+        plantType: commandObj.plantType,
+        timestamp: commandObj.timestamp,
+        status: commandObj.status
+      }
     });
 
   } catch (error) {
@@ -756,8 +770,9 @@ setInterval(() => {
       const shouldKeep = commandTime > oneHourAgo || command.status === COMMAND_STATUS.PENDING;
       
       // Clear timeout if command is being removed
-      if (!shouldKeep && command.timeoutRef) {
-        clearTimeout(command.timeoutRef);
+      if (!shouldKeep && global.commandTimeouts && global.commandTimeouts.has(command.id)) {
+        clearTimeout(global.commandTimeouts.get(command.id));
+        global.commandTimeouts.delete(command.id);
       }
       
       return shouldKeep;
